@@ -7,6 +7,7 @@ import select
 IP="192.168.0.100"
 PORT=5007
 
+#Initializing local variables
 refreshInterval=1.2 #1 minute represents a change of 0.303
 lastRefresh=0
 data=""
