@@ -7,7 +7,6 @@ import select
 IP="192.168.0.100"
 PORT=5007
 
-#Initializing local variables
 refreshInterval=1.2 #1 minute represents a change of 0.303
 lastRefresh=0
 data=""
@@ -211,14 +210,15 @@ while True:
 
     #Relay the message through
     if msgType=="FWD":
+        msgType=""
         if devIP=='No IP':
             print("No registered device found. No action taken.")
         else:
             print("Found registered forwarding device. Forwarding now...")
             sendUDP(devID,message)
-        msgType=""
 
     if msgType=="LOG":
+        msgType=""
         if devID=="BUT002":
             sendUDP("LED002",message)
         if devID=="CMD003": #weather query message
@@ -232,6 +232,7 @@ while True:
             sendUDP("LED001","off")
             sendUDP("LED002","off")
             sendUDP("LED003","off")
+            sendUDP("LED004","off")
             sendUDP("RET003","instant off")
 
 
