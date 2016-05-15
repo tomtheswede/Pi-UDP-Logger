@@ -1,171 +1,81 @@
-import socket
-import time
-import traceback
-import select
+import socket, os, time, select
 
-
-IP="192.168.0.100"
+#Global variables
 PORT=5007
-
-refreshInterval=1.2 #1 minute represents a change of 0.303
-lastRefresh=0
-data=""
-msgType=""
-devID=""
-message=""
-resetCalCheck=True
-
+IP=""
 sock=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind(('',PORT))
+entryNum=0
+resetCalCheck=True
 
-#Pick up from the last entry number
-print("Initiallizing...")
-check=open("UDPLog.txt",'a')
-check.close()
-readFile=open("UDPLog.txt","r")
-readLines=readFile.readlines()
-readFile.close()
-#Error handle for when a file is only 3 lines long
-if len(readLines)==0:
-    entryNum=0
-    print("Blank file found: Added new header")
-    log=open("UDPLog.txt","a")
-    log.write("#,Timestamp,IP,Type,ID,Value\n") #Log a header
-    log.close()
-elif len(readLines)==1:
-    print("Blank file found: Header exists")
-    entryNum=0
-else:
-    if len(readLines)==2:
-        lastLine=readLines[1]
-        firstLine=readLines[1]
-    elif len(readLines)==3:
-        lastLine=readLines[2]
-        firstLine=readLines[1]
-    else:
-        lastLine=readLines[-1]
-        firstLine=readLines[1]
-    print("First line stored: " + firstLine[:-1])
-    print("Last line stored: " + lastLine)
-    pos=firstLine.index(',')
-    firstNum=int(firstLine[0:pos])
-    pos=lastLine.index(',')
-    entryNum=int(lastLine[0:pos])
-    #next code introduction, auto archiving for large datasets
-    #if lastNum-firstNum>20:
-    #    archive=open("UDPLogArchive.txt","a")
-    #    read=open("UDPLog.txt","w")    
-print("---- Now receiving on IP " + str(IP) + " at port " + str(PORT) + " ----")
+def getLocalIP():
+    gw = os.popen("ip -4 route show default").read().split()
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect((gw[2], 0))
+    ipAddr = s.getsockname()[0]
+    print("Local IP:",ipAddr)
+    return ipAddr;
 
-
-def getDevIP(devID):
-    log=open("DeviceLog.txt","r")
-    lines=log.readlines()
-    log.close()
-    for line in lines:
-        if line[:6]==devID:
-            pos=line.index(",",8)
-            outIP = line[7:pos]
-            break
-        else:
-            outIP = "No IP"
-    return outIP;
-
-def logMsg( toIP, msgType, devID, msg):
+def setupLog():
     global entryNum
-    entryNum = entryNum + 1
-    logData=str(entryNum) + "," + time.strftime("%Y-%m-%d")+" "+time.strftime("%H:%M:%S") + "," + toIP + "," + msgType + "," + devID + "," + msg + "\n"
-    log=open("UDPLog.txt","a")
-    log.write(logData)
-    log.close()
-    print("Message logged: " + logData[:-1])
-    
-def sendUDP( toID, msg ):
-    toIP=getDevIP(toID)
-    if toIP=="No IP":
-        print("No IP available for sending to this device: " + toID)
+    global IP
+    print("Initiallizing...")
+    IP=getLocalIP()
+    readFile=open("UDPLog.txt","a") #create file if it doesn't exist
+    readFile.close()
+    readFile=open("UDPLog.txt","r")
+    readLines=readFile.readlines()
+    readFile.close()
+    if len(readLines)==0:
+        log=open("UDPLog.txt","a")
+        log.write("#,Timestamp,IP,Type,ID,Value\n") #Log a header
+        log.close()
+        print("Blank file found: Added new header")
+    elif len(readLines)==1:
+        print("Blank file found: Header exists")
     else:
-        sendData=toID + "," + msg
-        sendthis=sendData.encode('utf-8') #Changing type
-        sock.sendto(sendthis,(toIP,PORT))
-        print("Sent message: ", sendData)
-        logMsg(toIP,"OUT",toID,msg)
-    return;
+        if len(readLines)==2:
+            lastLine=readLines[1]
+            firstLine=readLines[1]
+        elif len(readLines)==3:
+            lastLine=readLines[2]
+            firstLine=readLines[1]
+        else:
+            lastLine=readLines[-1]
+            firstLine=readLines[1]
+        print("First line stored: " + firstLine[:-1])
+        print("Last line stored: " + lastLine)
+        pos=lastLine.index(',')
+        entryNum=int(lastLine[0:pos])
+    print("---- Now receiving on IP " + str(IP) + " at port " + str(PORT) + " ----")
 
-def logIP( devID, devIP, devDescriptor):
-    logDev=devID + "," + devIP + "," + devDescriptor + "," + time.strftime("%Y-%m-%d")+" "+time.strftime("%H:%M:%S") + "\n"
-    log=open("DeviceLog.txt","r") #open to read in file contents
-    lines=log.readlines() #stores file to memory
-    log.close
-    lines.append(logDev) #adds the new line
-    lines.reverse()
-    out=list()
-    entries=set()
-    for line in lines:
-        if line[:6] not in entries:
-            out.append(line)
-            entries.add(line[:6])
-    out.reverse()
-    log=open("DeviceLog.txt","w")
-    for line in out:
-        log.write(line)
-    log.close()
-    print("IP logged: " + logDev[:-1])
-    return;
-
-def refreshRecents():
-    log=open("UDPLog.txt","r") #open to read in file contents
-    lines=log.readlines() #stores file to memory
-    log.close
-    lines.reverse()
-    out=list()
-    entries=set()
-    for line in lines:
-        logSplit=line.split(",")
-        logID=logSplit[4]
-        if logSplit[3]=="LOG":
-            if logID not in entries:
-                out.append(logSplit[1] + "," + logID + "," + logSplit[5])
-                entries.add(logID)
-    out.reverse()
-    log=open("RecentsLog.txt","w")
-    for line in out:
-        log.write(line)
-    log.close()
-    print("Recent values file refreshed")
-
-def getLastValue(devID):
-    output="Empty"
-    log=open("RecentsLog.txt","r") #open to read in file contents
-    lines=log.readlines() #stores file to memory
-    log.close
-    for line in lines:
-        logSplit=line.split(",")
-        if logSplit[1]==devID:
-            output=logSplit[2][:-1];
-    return output;
-    
-
-#Log what is read and occasionally respond
-while True:
-
-    #process incomming message if available
+def waitForMessage(): #Primes a message if available
+    global sock
     sockReady=select.select([sock],[],[],0.1) #[True,True]
     if sockReady[0]:
-        print("--- Waiting for UDP data")
-        data, addr=sock.recvfrom(1024) #Receiving the data from the buffer
-        addr=str(addr) #convert to string
-        pos2=addr.index("'",3)
-        devIP=addr[2:pos2] #trim 4 digit port number
-        data=str(data) #change to string
-        data=data[2:-1] #strip the b character
-        print("Raw incoming message: " + data)
+        print("")
+        print("--- Socket received data")
+        message=getMessage()
+    else:
+        message=""
+    return message;
 
-        if refreshInterval<(time.clock()-lastRefresh):
-            refreshRecents()
-            lastRefresh=time.clock()
+def getMessage():
+    global sock
+    data, addr=sock.recvfrom(1024) #Receiving the data from the buffer
+    addr=str(addr) #convert to string
+    pos2=addr.index("'",3)
+    devIP=addr[2:pos2] #trim 4 digit port number
+    data=str(data) #change to string
+    message=devIP+','+data[2:-1] #strip the b character
+    print("Raw incoming message:",data)
+    print("Output:",message)
+    return message;
 
-
+def scheduledEventGet():
+    global resetCalCheck
+    global IP
+    message=""
     if int(time.strftime('%-S'))%25==0:
         resetCalCheck=True
     if int(time.strftime('%-S'))%26==0 and resetCalCheck==True: #trigger every remainder minutes
@@ -176,64 +86,147 @@ while True:
         for line in lines:
             calSplit=line.split(',')
             if calSplit[0][:-3]==time.strftime('%Y-%m-%d %H:%M'):
-                print("Scheduled message executed: " + line[20:-1])
-                data=line[20:-1]
-                devIP=IP
+                resetCalCheck=True
                 lines.remove(line)
-            #else:
-            #    print("This cal event was not triggered:",calSplit[2],calSplit[3][:-1])
+                message=IP+','+line[20:-1]
+                print("Scheduled message returned:",message)
+                break
         cal=open("CalendarOutput.txt",'w')
         for line in lines:
             cal.write(line)
         cal.close()
-    #time.sleep(5) 
+    return message;
 
-    #process data when available
+def processMessage(data):
+    #Split the message
+    msgType=""
     if data.count(',')==0:
         pass
-    elif data.count(',')==2:
-        #breaking out the message
-        msgType=data.split(",")[0]
-        devID=data.split(",")[1]
-        message=data.split(",")[2]
-        logMsg(devIP,msgType,devID,message)
-        data=""
+    elif data.count(',')==3: #breaking out the message
+        dataSplit=data.split(",") #form at is {IP,type,ID,message}
+        msgIP=dataSplit[0]
+        msgType=dataSplit[1]
+        msgID=dataSplit[2]
+        msg=dataSplit[3]
+        logMsg(msgType,msgID,msg)
     else:
         print("Invalid message recieved: " + data)
-        data=""
-
-    
-    #Register oncomming devices
-    if msgType=="REG":
-        logIP(devID,devIP,message)
-        msgType=""
-
-    #Relay the message through
+    #Take action on the messages
     if msgType=="FWD":
-        msgType=""
-        if devIP=='No IP':
+        if getIpFromId(msgID)=="":
             print("No registered device found. No action taken.")
         else:
             print("Found registered forwarding device. Forwarding now...")
-            sendUDP(devID,message)
+            sendUdp(msgID,msg)      
+    elif msgType=="LOG":
+        logRecent(msgID,msg)
+        if msgID=="BUT002": #forward button pushes
+            sendUdp("LED002",msg)
+        if msgID=="CMD003": #weather query message
+            serveWeatherInfo(msgIP)
+        if msg=="all off":
+            allOff()
+    elif msgType=="REG":
+        logRecent(msgID,msg)
+        
+            
+def serveWeatherInfo(devIP):
+    global sock
+    sendData=time.strftime("%H:%M")+","+getLastValue("TEM001")+","+getLastValue("TEM002")+","+getLastValue("HUM001")+","+getLastValue("HUM002") #Contstructs the data for sending to android
+    sendData=sendData.encode('utf-8') #Changing type
+    sock.sendto(sendData,(devIP,PORT)) #echo weather data to client
+    print("Just sent weather: " + sendData)
 
-    if msgType=="LOG":
-        msgType=""
-        if devID=="BUT002":
-            sendUDP("LED002",message)
-        if devID=="CMD003": #weather query message
-            sendData=time.strftime("%H:%M")+","+getLastValue("TEM001")+","+getLastValue("TEM002")+","+getLastValue("HUM001")+","+getLastValue("HUM002") #Contstructs the data for sending to android
-            print("Just sent weather: " + sendData)
-            sendData=sendData.encode('utf-8') #Changing type
-            sock.sendto(sendData,(devIP,PORT)) #echo weather data to client
-            devID=""
+def sendUdp(toID,msg):
+    global sock
+    toIP=getIpFromId(toID)
+    if toIP=="":
+        print("No IP available for sending to",toID)
+    else:
+        sendData=toID + "," + msg
+        sendthis=sendData.encode('utf-8') #Changing type
+        sock.sendto(sendthis,(toIP,PORT))
+        print("Sent message: ", sendData)
+        logMsg("OUT",toID,msg)
+        
+def getLastValue(devID):
+    output="Empty"
+    log=open("DeviceLog.txt","r") #open to read in file contents
+    lines=log.readlines() #stores file to memory
+    log.close
+    for line in lines:
+        logSplit=line.split(",")
+        if logSplit[0]==devID:
+            output=logSplit[5];
+    return output;
 
-        if message=="all off":
-            sendUDP("LED001","off")
-            sendUDP("LED002","off")
-            sendUDP("LED003","off")
-            sendUDP("LED004","off")
-            sendUDP("RET003","instant off")
+def getLastValueTime(devID):
+    output="Empty"
+    log=open("DeviceLog.txt","r") #open to read in file contents
+    lines=log.readlines() #stores file to memory
+    log.close
+    for line in lines:
+        logSplit=line.split(",")
+        if logSplit[0]==devID:
+            output=logSplit[6][:-1];
+    return output;
+
+def allOff(): #consider using a file with devIDs for this instead of DeviceLog
+    log=open("DeviceLog.txt","r")
+    lines=log.readlines()
+    log.close()
+    for line in lines:
+        logSplit=line.split(",")
+        sendUdp(logSplit[0],"off")
+                   
+def getIpFromId(devID):
+    log=open("DeviceLog.txt","r")
+    lines=log.readlines()
+    log.close()
+    for line in lines:
+        if line[:6]==devID:
+            pos=line.index(",",8)
+            outIP = line[7:pos]
+            break
+        else:
+            outIP = "" #No IP
+    return outIP;
+
+
+def logMsg(msgType,devID,msg):
+    global entryNum
+    entryNum = entryNum + 1
+    logData=str(entryNum) + "," + time.strftime("%Y-%m-%d")+" "+time.strftime("%H:%M:%S") + "," + msgType + "," + devID + "," + msg + "\n"
+    log=open("UDPLog.txt","a")
+    log.write(logData)
+    log.close()
+    print("Message logged: " + logData[:-1])
+
+def logRecent(devID,value):
+    log=open("DeviceLog.txt","r") #open to read in file contents
+    lines=log.readlines() #stores file to memory
+    log.close
+    for i in range(0,len(lines)):
+        logSplit=lines[i].split(",")
+        if logSplit[0]==devID:
+            lines[i]=logSplit[0]+','+logSplit[1]+','+logSplit[2]+','+logSplit[3]+','+logSplit[4]+','+value+','+time.strftime("%Y-%m-%d")+' '+time.strftime("%H:%M:%S") + '\n'
+            print("Updated a registered device's recent state:", logSplit[0])
+    log=open("DeviceLog.txt","w")
+    for line in lines:
+        log.write(line)
+    log.close()
+
+
+#Log what is read and occasionally respond
+setupLog()
+while True:
+    msgData=waitForMessage()
+    if msgData=="":
+        msgData=scheduledEventGet()
+
+    #process data when available
+    if msgData!="":
+        processMessage(msgData)
 
 
     
