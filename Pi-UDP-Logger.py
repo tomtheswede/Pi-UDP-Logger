@@ -120,14 +120,22 @@ def processMessage(data):
             sendUdp(msgID,msg)      
     elif msgType=="LOG":
         logRecent(msgID,msg)
+        if msgID=="BUT001": #forward button pushes
+            sendUdp("LED001",msg)
         if msgID=="BUT002": #forward button pushes
             sendUdp("LED002",msg)
+        if msgID=="BUT005": #forward button pushes
+            sendUdp("LED005",msg)
         if msgID=="CMD003": #weather query message
             serveWeatherInfo(msgIP)
+        if (msgID=="MOB001" or msgID=="MOB002") and msg=="online" and float(time.strftime('%H'))>17: #turn light on if you arrive home after 7pm
+            sendUdp("LED005","timer600 100")
+            sendUdp("LED001","timer380 100")
+            sendUdp("LED003","timer380 100")
         if msg=="all off":
             allOff()
     elif msgType=="REG":
-        logRecent(msgID,msg)
+        regDevice(msgID,msgIP,msg)
         
             
 def serveWeatherInfo(devIP):
@@ -135,7 +143,7 @@ def serveWeatherInfo(devIP):
     sendData=time.strftime("%H:%M")+","+getLastValue("TEM001")+","+getLastValue("TEM002")+","+getLastValue("HUM001")+","+getLastValue("HUM002") #Contstructs the data for sending to android
     sendData=sendData.encode('utf-8') #Changing type
     sock.sendto(sendData,(devIP,PORT)) #echo weather data to client
-    print("Just sent weather: " + sendData)
+    print("Just sent weather: ", sendData)
 
 def sendUdp(toID,msg):
     global sock
@@ -146,7 +154,7 @@ def sendUdp(toID,msg):
         sendData=toID + "," + msg
         sendthis=sendData.encode('utf-8') #Changing type
         sock.sendto(sendthis,(toIP,PORT))
-        print("Sent message: ", sendData)
+        print("Sent message:", sendData)
         logMsg("OUT",toID,msg)
         
 def getLastValue(devID):
@@ -183,13 +191,12 @@ def getIpFromId(devID):
     log=open("DeviceLog.txt","r")
     lines=log.readlines()
     log.close()
+    outIP = "" #No IP by default
     for line in lines:
         if line[:6]==devID:
             pos=line.index(",",8)
             outIP = line[7:pos]
             break
-        else:
-            outIP = "" #No IP
     return outIP;
 
 
@@ -214,6 +221,25 @@ def logRecent(devID,value):
     log=open("DeviceLog.txt","w")
     for line in lines:
         log.write(line)
+    log.close()
+
+def regDevice(msgID,msgIP,msg):
+    log=open("DeviceLog.txt","r") #open to read in file contents
+    lines=log.readlines() #stores file to memory
+    log.close
+    noMatch = True
+    for i in range(0,len(lines)):
+        logSplit=lines[i].split(",")
+        if logSplit[0]==msgID:
+            lines[i]=msgID+','+msgIP+','+msg+','+'No mac'+','+'online'+','+msg+','+time.strftime("%Y-%m-%d")+' '+time.strftime("%H:%M:%S") + '\n'
+            print("Updated a registered device's registration state:", logSplit[0])
+            noMatch = False
+    log=open("DeviceLog.txt","w")
+    for line in lines:
+        log.write(line)
+    if noMatch:
+        log.write(msgID+','+msgIP+','+msg+','+'No mac'+','+'online'+','+msg+','+time.strftime("%Y-%m-%d")+' '+time.strftime("%H:%M:%S") + '\n')
+        print("Logged a new unique device:", msgID)
     log.close()
 
 
