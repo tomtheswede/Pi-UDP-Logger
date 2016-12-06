@@ -28,7 +28,7 @@ def setupLog():
     readFile.close()
     if len(readLines)==0:
         log=open("UDPLog.txt","a")
-        log.write("#,Timestamp,IP,Type,ID,Value\n") #Log a header
+        log.write("#,Timestamp,Type,ID,Value\n") #Log a header
         log.close()
         print("Blank file found: Added new header")
     elif len(readLines)==1:
@@ -122,10 +122,37 @@ def processMessage(data):
         logRecent(msgID,msg)
         if msgID=="BUT001": #forward button pushes
             sendUdp("LED001",msg)
+        if msgID=="BUT008": #route button pushes based on value
+            if msg=="press":
+                sendUdp("LED001","toggle")
+            elif msg=="longPress":
+                sendUdp("LED002","100")
+                sendUdp("LED003","100")
+            elif msg=="longestPress":
+                allOff()
+        if msgID=="BUT009": #route button pushes based on value
+            if msg=="press":
+                sendUdp("LED001","toggle")
+            elif msg=="longPress":
+                sendUdp("LED001","100")
+            elif msg=="longestPress":
+                allOff()
+        if msgID=="BUT010": #route button pushes based on value
+            if msg=="press":
+                sendUdp("LED002","toggle")
+                sendUdp("LED003","toggle")
+            elif msg=="longPress":
+                sendUdp("LED002","100")
+                sendUdp("LED003","100")
+            elif msg=="longestPress":
+                allOff()
         if msgID=="BUT002": #forward button pushes
             sendUdp("LED002",msg)
+            sendUdp("LED003",msg)
         if msgID=="BUT005": #forward button pushes
             sendUdp("LED005",msg)
+        if msgID=="BUT015": #forward button pushes
+            sendUdp("LED015",msg)
         if msgID=="CMD003": #weather query message
             serveWeatherInfo(msgIP)
         if (msgID=="MOB001" or msgID=="MOB002") and msg=="online" and float(time.strftime('%H'))>17: #turn light on if you arrive home after 7pm
@@ -154,7 +181,7 @@ def sendUdp(toID,msg):
         sendData=toID + "," + msg
         sendthis=sendData.encode('utf-8') #Changing type
         sock.sendto(sendthis,(toIP,PORT))
-        print("Sent message:", sendData)
+        print("-- Sent message:", sendData)
         logMsg("OUT",toID,msg)
         
 def getLastValue(devID):
